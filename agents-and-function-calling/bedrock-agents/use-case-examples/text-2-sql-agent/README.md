@@ -40,7 +40,7 @@ Before you begin, ensure you have the following:
   - Access and manage Amazon Bedrock agents and models.
   - Create and manage Amazon Glue databases and crawlers.
   - Execute queries and manage workspaces in Amazon Athena.
-  - Access to Amazon Bedrock foundation models (Anthropic’s Claude 3 Sonnet model for this solution)
+  - Access to Amazon Nova Lite (`amazon.nova-lite-v1:0`) for on-demand inference in the selected Region. Setup uses `bedrock:GetFoundationModel` to check the model before creating resources; the agent role can invoke only that regional model.
 
 - For local setup,
         - Python and Jupyter Notebooks installed

@@ -9,6 +9,17 @@ from security_config import (
 )
 
 
+# Fail before provisioning if the model is unavailable for regional, on-demand use.
+model = aws_client("bedrock").get_foundation_model(
+    modelIdentifier=foundation_model_id
+)["modelDetails"]
+if (
+    model["modelLifecycle"]["status"] != "ACTIVE"
+    or "ON_DEMAND" not in model["inferenceTypesSupported"]
+):
+    raise RuntimeError(f"Choose an active regional on-demand foundation model in {region}.")
+
+
 # ### Create S3 bucket and upload API Schema
 # 
 # Agents require an API Schema stored on s3. Let's create an S3 bucket to store the file and upload the file to the newly created bucket
@@ -279,7 +290,7 @@ bedrock_agent_bedrock_allow_policy_statement = {
             "Effect": "Allow",
             "Action": "bedrock:InvokeModel",
             "Resource": [
-                f"arn:aws:bedrock:{region}::foundation-model/{foundation_Model}"
+                f"arn:aws:bedrock:{region}::foundation-model/{foundation_model_id}"
             ]
         }
     ]
@@ -376,38 +387,13 @@ iam_client.attach_role_policy(
 agent_instruction = """You are an expert database querying assistant that answers questions about baseball players. First use the getschema tool to understand the available tables and columns. Then call querydatabase with exactly one read-only SELECT statement against those tables. Do not generate DDL, DML mutations, UNLOAD, comments, common table expressions, quoted identifiers, or multiple statements. Always include a reasonable LIMIT for row-returning queries. Here is an example: <example>SELECT * FROM thehistoryofbaseball.player LIMIT 10</example>. Return the answer and the SELECT statement in plain English."""
 
 
-##PLEASE Note
-###Disabling pre-processing can enhance the agent's response time, however, it may increase the risk of inaccuracies in SQL query generation or some sql ingestion. Careful consideration is advised when toggling this feature based on your use case requirements.
-
-
 response = bedrock_agent_client.create_agent(
     agentName=agent_name,
     agentResourceRoleArn=agent_role['Role']['Arn'],
     description="Agent for performing sql queries.",
     idleSessionTTLInSeconds=idleSessionTTLInSeconds,
-    foundationModel=foundation_Model,
+    foundationModel=foundation_model_id,
     instruction=agent_instruction,
-    promptOverrideConfiguration={
-    #Disable preprocessing prompt
-        'promptConfigurations': [
-            {
-                'promptType': 'PRE_PROCESSING',
-                'promptCreationMode': 'OVERRIDDEN',
-                'promptState': 'DISABLED',
-                'basePromptTemplate':' ',
-                 'inferenceConfiguration': {
-                    'temperature': 0,
-                    'topP': 1,
-                    'topK': 123,
-                    'maximumLength': 2048,
-                    'stopSequences': [
-                        'Human',
-                    ]
-                },
-                
-            }
-        ]
-    }
 )
     
 
