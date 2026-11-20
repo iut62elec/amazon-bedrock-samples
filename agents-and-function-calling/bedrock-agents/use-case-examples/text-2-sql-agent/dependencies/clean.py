@@ -3,6 +3,11 @@
 from dataclasses import dataclass, field
 import time
 
+if __package__:
+    from .security_config import GLUE_SERVICE_POLICY_ARN, LAMBDA_LOGGING_POLICY_ARN, deployment_tag
+else:
+    from security_config import GLUE_SERVICE_POLICY_ARN, LAMBDA_LOGGING_POLICY_ARN, deployment_tag
+
 
 COMMON_NOT_FOUND_CODES = frozenset(
     {
@@ -119,9 +124,13 @@ def delete_glue_tables(client, database_name):
     print(f"Deleted {len(tables)} table(s) from Glue database '{database_name}'.")
 
 
-def delete_iam_role(client, role_name):
-    """Remove every role dependency before deleting the sample-specific role."""
+def delete_iam_role(client, role_name, deployment_id, managed_arns, inline_names):
+    """Only tear down a tagged sample role with the expected dependencies."""
     role = client.get_role(RoleName=role_name)["Role"]
+    if deployment_tag(deployment_id) not in role.get("Tags", []):
+        raise RuntimeError(f"Leaving role '{role_name}' untouched: missing deployment tag.")
+    if role.get("PermissionsBoundary"):
+        raise RuntimeError(f"Leaving role '{role_name}' untouched: permissions boundary present.")
     attached_policies = _list_all(
         client,
         "list_attached_role_policies",
@@ -141,11 +150,10 @@ def delete_iam_role(client, role_name):
         RoleName=role_name,
     )
 
-    for instance_profile in instance_profiles:
-        client.remove_role_from_instance_profile(
-            InstanceProfileName=instance_profile["InstanceProfileName"],
-            RoleName=role_name,
-        )
+    foreign_inline = set(inline_policy_names) - inline_names
+    foreign_managed = {policy["PolicyArn"] for policy in attached_policies} - managed_arns
+    if instance_profiles or foreign_inline or foreign_managed:
+        raise RuntimeError(f"Leaving role '{role_name}' untouched: unexpected role dependencies.")
     for policy in attached_policies:
         client.detach_role_policy(
             RoleName=role_name,
@@ -156,16 +164,19 @@ def delete_iam_role(client, role_name):
             RoleName=role_name,
             PolicyName=policy_name,
         )
-    if role.get("PermissionsBoundary"):
-        client.delete_role_permissions_boundary(RoleName=role_name)
-
     client.delete_role(RoleName=role_name)
     print(f"IAM role '{role_name}' deleted successfully.")
 
 
-def delete_customer_managed_policy(client, account_id, policy_name):
+def delete_customer_managed_policy(client, account_id, policy_name, deployment_id):
     """Delete non-default versions and then the exact sample policy."""
     policy_arn = f"arn:aws:iam::{account_id}:policy/{policy_name}"
+    tags = _list_all(client, "list_policy_tags", "Tags", PolicyArn=policy_arn)
+    if deployment_tag(deployment_id) not in tags:
+        raise RuntimeError(f"Leaving policy '{policy_name}' untouched: missing deployment tag.")
+    policy = client.get_policy(PolicyArn=policy_arn)["Policy"]
+    if policy["AttachmentCount"] or policy.get("PermissionsBoundaryUsageCount", 0):
+        raise RuntimeError(f"Leaving policy '{policy_name}' untouched: it is still in use.")
     versions = client.list_policy_versions(PolicyArn=policy_arn).get("Versions", [])
     for version in versions:
         if not version.get("IsDefaultVersion"):
@@ -267,16 +278,20 @@ def cleanup_sample(sample):
         COMMON_NOT_FOUND_CODES,
     )
 
-    for role_name in (
-        sample.agent_role_name,
-        sample.lambda_role_name,
-        sample.glue_role_name,
-    ):
+    policy_prefix = f"arn:aws:iam::{sample.account_id}:policy/"
+    role_policies = (
+        (sample.agent_role_name, {
+            policy_prefix + sample.bedrock_agent_bedrock_allow_policy_name,
+            policy_prefix + sample.bedrock_agent_s3_allow_policy_name,
+        }, set()),
+        (sample.lambda_role_name, {LAMBDA_LOGGING_POLICY_ARN}, {sample.lambda_query_policy_name}),
+        (sample.glue_role_name, {GLUE_SERVICE_POLICY_ARN}, {sample.glue_data_policy_name}),
+    )
+    for role_name, managed_arns, inline_names in role_policies:
         report.attempt(
             f"Delete IAM role {role_name}",
-            lambda role_name=role_name: delete_iam_role(
-                sample.iam_client,
-                role_name,
+            lambda r=role_name, m=managed_arns, i=inline_names: delete_iam_role(
+                sample.iam_client, r, sample.deployment_id, m, i,
             ),
             COMMON_NOT_FOUND_CODES,
         )
@@ -291,6 +306,7 @@ def cleanup_sample(sample):
                 sample.iam_client,
                 sample.account_id,
                 policy_name,
+                sample.deployment_id,
             ),
             COMMON_NOT_FOUND_CODES,
         )
@@ -307,7 +323,10 @@ def cleanup_sample(sample):
 
 
 def main():
-    import config as sample
+    if __package__:
+        from . import config as sample
+    else:
+        import config as sample
 
     cleanup_sample(sample)
 

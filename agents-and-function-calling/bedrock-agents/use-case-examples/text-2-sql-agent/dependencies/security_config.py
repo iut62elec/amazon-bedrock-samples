@@ -1,5 +1,13 @@
 """Security configuration builders for the text-to-SQL sample."""
 
+DEPLOYMENT_TAG = "TextToSqlSampleDeployment"
+GLUE_SERVICE_POLICY_ARN = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
+LAMBDA_LOGGING_POLICY_ARN = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+
+
+def deployment_tag(deployment_id):
+    return {"Key": DEPLOYMENT_TAG, "Value": deployment_id}
+
 
 def require_aws_region(region):
     """Return a normalized AWS Region or fail before creating resources."""

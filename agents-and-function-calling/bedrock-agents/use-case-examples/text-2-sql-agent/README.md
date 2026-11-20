@@ -32,7 +32,7 @@ The Agent is designed to:
 
 Before you begin, ensure you have the following:
 - An AWS account with the following permissions:
-  - Create and manage IAM roles and policies.
+  - Create, tag, read, and manage the sample's IAM roles and policies.
   - Create and invoke AWS Lambda functions.
   - Create, read from, and write to Amazon S3 buckets.
   - Access and manage Amazon Bedrock agents and models.
@@ -93,14 +93,19 @@ python3 -m py_compile lambda_function.py query_guard.py dependencies/*.py tests/
 python3 -m json.tool dependencies/text_to_sql_openapi_schema.json > /dev/null
 ```
 
-The suite includes the reported `UNLOAD` shape, mutating and administrative statements, comment and statement-smuggling variants, malformed and obfuscated tokens, supported read-only queries, preflight configuration failures, bounded-result and timeout behavior, complete IAM-role teardown, versioned S3 cleanup, and assertions that generated IAM policies contain neither wildcard actions nor global resources. A mutation test proves that removing the query validator reopens the reported boundary.
+The suite covers rejected queries, supported read-only queries, configuration and notebook imports, bounded results and timeouts, IAM ownership checks, versioned S3 cleanup, and the scope of the generated IAM policies.
 
 ### Existing deployments
 
-A deployment created from an older revision retains its original IAM attachments and Lambda package until it is removed. Run the cleanup script from the same older revision, verify that the sample Lambda and its execution role are gone, and then deploy this revision from a clean checkout. The older sample used the generic role name `AWSGlueServiceRole`; inspect that role before removing it because another workload might share it. New deployments use a sample-specific Glue role name.
+Merging or downloading this change does not update a running Lambda or its permissions. For deployments created before the dedicated workgroup and tagged roles:
+
+1. Stop access to the old sample: disable its Bedrock action group and restrict invocation of the old Lambda before doing cleanup. Record the function's execution role ARN and the crawler's role from their configurations.
+2. Do **not** run the old cleanup script unchanged. It detaches policies from `AWSGlueServiceRole` and attempts to delete it. Leave that role and any shared Bedrock role intact. Also leave their policy attachments intact unless the other owners have confirmed the change.
+3. Inventory the sample's resources in the deploying account and Region. Verify ownership and other users before deleting anything. Preserve any data you need. Remove the old sample Lambda, and remove the broad Athena, Glue and S3 grants from its verified, dedicated role before deleting that role. If a role is shared, have its owner replace the grants safely. Remove only the remaining resources confirmed to belong exclusively to this sample.
+4. Verify the old function is gone and its dedicated execution role no longer grants broad access. Deploy the new sample from a clean checkout. It creates new, tagged IAM roles and does not adopt existing roles.
 
 ## Cleanup
 
-Run `dependencies/clean.py` through the notebook cleanup cell. The script removes the exact sample agent, Lambda, dedicated Athena workgroup, Glue catalog resources, sample-specific IAM roles and policies, and S3 bucket. It enumerates all attached and inline role policies, instance-profile references, permissions boundaries, current S3 objects, object versions, and delete markers before deletion.
+For a deployment created by this revision, run `dependencies/clean.py` through the notebook cleanup cell. Verify the configured agent, Lambda, Athena workgroup, Glue resources and S3 bucket belong exclusively to this deployment before running cleanup, particularly after a partial installation. Bucket cleanup permanently deletes object versions and delete markers. IAM cleanup checks the deployment tag and expected policy attachments; it leaves untagged roles, unexpected dependencies, permissions boundaries and in-use policies for the owner to review.
 
 Expected already-absent resources are reported and ignored. Other failures are retained while independent cleanup steps continue, then raised together at the end so incomplete cleanup cannot look successful. Review the output and verify the resources are gone before discarding the checkout.

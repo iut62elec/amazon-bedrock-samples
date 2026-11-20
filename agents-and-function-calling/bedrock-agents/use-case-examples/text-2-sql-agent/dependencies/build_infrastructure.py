@@ -1,8 +1,11 @@
 from config import *
 from security_config import (
+    GLUE_SERVICE_POLICY_ARN,
+    LAMBDA_LOGGING_POLICY_ARN,
     build_athena_workgroup_configuration,
     build_glue_data_policy,
     build_lambda_query_policy,
+    deployment_tag,
 )
 
 
@@ -90,38 +93,16 @@ glue_assume_role_policy = {
     ],
 }
 
-try:
-    glue_iam_role = iam_client.create_role(
-        RoleName=glue_role_name,
-        AssumeRolePolicyDocument=json.dumps(glue_assume_role_policy),
-    )
-    time.sleep(10)
-except iam_client.exceptions.EntityAlreadyExistsException:
-    glue_iam_role = iam_client.get_role(RoleName=glue_role_name)
-
-glue_service_policy_arn = (
-    "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
+iam_client.create_role(
+    RoleName=glue_role_name,
+    AssumeRolePolicyDocument=json.dumps(glue_assume_role_policy),
+    Tags=[deployment_tag(deployment_id)],
 )
-for attached_policy in iam_client.list_attached_role_policies(
-    RoleName=glue_role_name
-)["AttachedPolicies"]:
-    if attached_policy["PolicyArn"] != glue_service_policy_arn:
-        iam_client.detach_role_policy(
-            RoleName=glue_role_name,
-            PolicyArn=attached_policy["PolicyArn"],
-        )
-for inline_policy_name in iam_client.list_role_policies(
-    RoleName=glue_role_name
-)["PolicyNames"]:
-    if inline_policy_name != glue_data_policy_name:
-        iam_client.delete_role_policy(
-            RoleName=glue_role_name,
-            PolicyName=inline_policy_name,
-        )
+time.sleep(10)
 
 iam_client.attach_role_policy(
     RoleName=glue_role_name,
-    PolicyArn=glue_service_policy_arn,
+    PolicyArn=GLUE_SERVICE_POLICY_ARN,
 )
 iam_client.put_role_policy(
     RoleName=glue_role_name,
@@ -224,40 +205,16 @@ lambda_assume_role_policy = {
     ],
 }
 
-try:
-    lambda_iam_role = iam_client.create_role(
-        RoleName=lambda_role_name,
-        AssumeRolePolicyDocument=json.dumps(lambda_assume_role_policy),
-    )
-    time.sleep(10)
-except iam_client.exceptions.EntityAlreadyExistsException:
-    lambda_iam_role = iam_client.get_role(RoleName=lambda_role_name)
-
-    
-lambda_logging_policy_arn = (
-    "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+lambda_iam_role = iam_client.create_role(
+    RoleName=lambda_role_name,
+    AssumeRolePolicyDocument=json.dumps(lambda_assume_role_policy),
+    Tags=[deployment_tag(deployment_id)],
 )
-attached_lambda_policies = iam_client.list_attached_role_policies(
-    RoleName=lambda_role_name
-)["AttachedPolicies"]
-for attached_policy in attached_lambda_policies:
-    if attached_policy["PolicyArn"] != lambda_logging_policy_arn:
-        iam_client.detach_role_policy(
-            RoleName=lambda_role_name,
-            PolicyArn=attached_policy["PolicyArn"],
-        )
-for inline_policy_name in iam_client.list_role_policies(
-    RoleName=lambda_role_name
-)["PolicyNames"]:
-    if inline_policy_name != lambda_query_policy_name:
-        iam_client.delete_role_policy(
-            RoleName=lambda_role_name,
-            PolicyName=inline_policy_name,
-        )
+time.sleep(10)
 
 iam_client.attach_role_policy(
     RoleName=lambda_role_name,
-    PolicyArn=lambda_logging_policy_arn,
+    PolicyArn=LAMBDA_LOGGING_POLICY_ARN,
 )
 iam_client.put_role_policy(
     RoleName=lambda_role_name,
@@ -332,7 +289,8 @@ bedrock_policy_json = json.dumps(bedrock_agent_bedrock_allow_policy_statement)
 bedrock_agent_bedrock_allow_policy_name
 agent_bedrock_policy = iam_client.create_policy(
     PolicyName=bedrock_agent_bedrock_allow_policy_name,
-    PolicyDocument=bedrock_policy_json
+    PolicyDocument=bedrock_policy_json,
+    Tags=[deployment_tag(deployment_id)],
 )
 
 
@@ -359,7 +317,8 @@ bedrock_agent_s3_json = json.dumps(bedrock_agent_s3_allow_policy_statement)
 agent_s3_schema_policy = iam_client.create_policy(
     PolicyName=bedrock_agent_s3_allow_policy_name,
     Description=f"Policy to allow invoke Lambda that was provisioned for it.",
-    PolicyDocument=bedrock_agent_s3_json
+    PolicyDocument=bedrock_agent_s3_json,
+    Tags=[deployment_tag(deployment_id)],
 )
 
 
@@ -389,7 +348,8 @@ assume_role_policy_document = {
 assume_role_policy_document_json = json.dumps(assume_role_policy_document)
 agent_role = iam_client.create_role(
     RoleName=agent_role_name,
-    AssumeRolePolicyDocument=assume_role_policy_document_json
+    AssumeRolePolicyDocument=assume_role_policy_document_json,
+    Tags=[deployment_tag(deployment_id)],
 )
 
 # Pause to make sure role is created
