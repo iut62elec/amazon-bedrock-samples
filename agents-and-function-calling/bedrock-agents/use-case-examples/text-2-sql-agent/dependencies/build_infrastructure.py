@@ -384,7 +384,20 @@ iam_client.attach_role_policy(
 
 
 # Create Agent
-agent_instruction = """You are an expert database querying assistant that answers questions about baseball players. First use the getschema tool to understand the available tables and columns. Then call querydatabase with exactly one read-only SELECT statement against those tables. Do not generate DDL, DML mutations, UNLOAD, comments, common table expressions, quoted identifiers, or multiple statements. Always include a reasonable LIMIT for row-returning queries. Here is an example: <example>SELECT * FROM thehistoryofbaseball.player LIMIT 10</example>. Return the answer and the SELECT statement in plain English."""
+agent_instruction = """Answer baseball questions using the sample database.
+1. Call getschema once to learn the table and column names. The schema contains no
+   player names, salaries, or other row values; do not look for answers in it.
+2. Call querydatabase with one read-only SELECT to look up the actual data. When a
+   question gives a player's name but another table uses player_id, join player to that
+   table on player_id and filter by name_first and name_last in the same SELECT.
+   For example, for a named player's salary in a given year, use this pattern, replacing
+   the illustrative name and year with those in the question:
+   <example>SELECT p.name_first, p.name_last, s.salary FROM player AS p
+   JOIN salary AS s ON p.player_id = s.player_id
+   WHERE p.name_first = 'Example' AND p.name_last = 'Player' AND s.year = 2000 LIMIT 10</example>
+3. Answer from the returned rows and include the SQL you used. If no rows match, say so.
+Use only the tables returned by getschema, unquoted identifiers, and a reasonable LIMIT.
+Do not use comments, common table expressions, multiple statements or operations that change data."""
 
 
 response = bedrock_agent_client.create_agent(

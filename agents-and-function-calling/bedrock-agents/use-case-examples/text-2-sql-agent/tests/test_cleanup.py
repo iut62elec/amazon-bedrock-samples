@@ -5,7 +5,7 @@ import unittest
 DEPENDENCIES_ROOT = pathlib.Path(__file__).resolve().parents[1] / "dependencies"
 sys.path.insert(0, str(DEPENDENCIES_ROOT))
 
-from clean import CleanupReport, delete_customer_managed_policy, delete_iam_role, empty_and_delete_bucket
+from clean import CleanupReport, delete_agent_resources, delete_customer_managed_policy, delete_iam_role, empty_and_delete_bucket
 from security_config import deployment_tag
 from unittest import mock
 
@@ -88,6 +88,15 @@ class FakeAwsError(Exception):
 
 
 class CleanupTests(unittest.TestCase):
+    def test_agent_cleanup_leaves_reserved_test_alias_to_bedrock(self):
+        client = mock.Mock()
+        agents = [{"agentSummaries": [{"agentName": "sample", "agentId": "ABCDEFGHIJ"}]}]
+        aliases = [{"agentAliasSummaries": [{"agentAliasId": "TSTALIASID"}, {"agentAliasId": "KLMNOPQRST"}]}]
+        client.get_paginator.return_value.paginate.side_effect = [agents, aliases]
+        delete_agent_resources(client, "sample")
+        client.delete_agent_alias.assert_called_once_with(agentId="ABCDEFGHIJ", agentAliasId="KLMNOPQRST")
+        client.delete_agent.assert_called_once_with(agentId="ABCDEFGHIJ")
+
     def delete_test_role(self, client):
         delete_iam_role(client, "sample-role", "sample-deployment",
                         {"arn:managed:one", "arn:managed:two"}, {"inline-one", "inline-two"})

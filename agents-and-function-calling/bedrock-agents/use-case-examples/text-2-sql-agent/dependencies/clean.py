@@ -79,7 +79,7 @@ def _find_agent_id(client, agent_name):
 
 
 def delete_agent_resources(client, agent_name):
-    """Delete every alias before deleting the exact sample agent."""
+    """Delete deployed aliases; Bedrock removes its reserved test alias with the agent."""
     agent_id = _find_agent_id(client, agent_name)
     if not agent_id:
         print(f"Bedrock agent '{agent_name}': already absent.")
@@ -92,6 +92,8 @@ def delete_agent_resources(client, agent_name):
         agentId=agent_id,
     )
     for alias in aliases:
+        if alias["agentAliasId"] == "TSTALIASID":
+            continue
         client.delete_agent_alias(
             agentId=agent_id,
             agentAliasId=alias["agentAliasId"],
