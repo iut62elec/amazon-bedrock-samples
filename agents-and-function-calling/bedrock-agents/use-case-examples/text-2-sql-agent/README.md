@@ -30,6 +30,8 @@ The Agent is designed to:
 
 ## Prerequisites
 
+This sample uses [Amazon Bedrock Agents Classic](https://docs.aws.amazon.com/bedrock/latest/userguide/agents-classic-maintenance-mode.html), which closed to new customers on July 30, 2026. Use a dedicated test account that already has Agents Classic access and verify that the configured model is available to that account in the selected Region **before** running the setup cell. [Model availability and end-of-life dates vary by Region](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html).
+
 Before you begin, ensure you have the following:
 - An AWS account with the following permissions:
   - Create, tag, read, and manage the sample's IAM roles and policies.
